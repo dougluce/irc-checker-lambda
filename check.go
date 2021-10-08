@@ -100,7 +100,7 @@ func (c Connection) checkStats(e *irc.Event) {
 	c.Quit()
 }
 
-func handleRequest(ctx context.Context, event events.CloudWatchEvent) (string, error) {
+func handleRequest(ctx context.Context, event events.CloudWatchEvent) error {
 	c := NewConnection()
 	c.AddCallback(RPL_WELCOME, c.sendWhois)
 	c.AddCallback(RPL_WHOISUSER, c.checkWhois)
@@ -108,7 +108,7 @@ func handleRequest(ctx context.Context, event events.CloudWatchEvent) (string, e
 	c.AddCallback(ERR_NOSUCHNICK, c.noNick)
 	err := c.Connect(address + ":" + port)
 	if err != nil {
-		return fmt.Sprintf("%s\n", err), nil
+		return err
 	}
 	go func() {
 		err := <-c.ErrorChan()
@@ -116,7 +116,7 @@ func handleRequest(ctx context.Context, event events.CloudWatchEvent) (string, e
 		c.Quit()
 	}()
 	c.Loop()
-	return "", anError
+	return anError
 }
 
 func main() {

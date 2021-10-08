@@ -1,13 +1,22 @@
 package main
 
-/* irc.horph.com checker
+/* Horph IRC checker lambda
 
-   Makes sure Horph's IRC server is up and accepting connections.
-   Also make sure Doug is online from newtoma and that the server has
-   been up since the last check.
+   Makes sure the IRC server is up and accepting connections.  Also
+   make sure the designated user is online from the expected host and
+   that the server has been up since the last check.
 
    This means it'll complain when the server reboots. But it should
-   only complain one time and the server should not reboot regularly. */
+   only complain one time and the server should not reboot regularly.
+
+Environment variables:
+
+SERVER -- the name of the server as specified in the TLS certificate.
+ADDRESS -- the DNS hostname or IP address of the server
+PORT -- The TCP port the server is listening to
+CHECKNICK -- nickname of a user who should be online
+EXPECTEDHOSTNAME -- the hostname the user should be on from
+INTERVAL -- if the server uptime is less than this, complain. */
 
 import (
 	"context"
@@ -15,21 +24,13 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"os"
 	"regexp"
 	"strconv"
 
 	"github.com/aws/aws-lambda-go/events"
 	runtime "github.com/aws/aws-lambda-go/lambda"
 	irc "github.com/thoj/go-ircevent"
-)
-
-var (
-	server            = "irc.horph.com"
-	address           = "192.231.221.58"
-	port              = "6697"
-	check_nick        = "doug"
-	expected_hostname = "ip-192-231-221-38.ec2.internal"
-	INTERVAL          = 5 * 60 // Check run interval in seconds
 )
 
 var anError error
@@ -50,7 +51,7 @@ func NewConnection() Connection {
 	//c.VerboseCallbackHandler = true // Uncomment to debug
 	c.Log = log.New(ioutil.Discard, "", log.LstdFlags) // to suppress connection message
 	c.UseTLS = true
-	c.TLSConfig = &tls.Config{ServerName: server}
+	c.TLSConfig = &tls.Config{ServerName: os.Getenv("SERVER")}
 	return c
 }
 
@@ -61,13 +62,13 @@ func (c Connection) noNick(e *irc.Event) {
 }
 
 func (c Connection) sendWhois(e *irc.Event) {
-	c.Whois(check_nick)
+	c.Whois(os.Getenv("CHECKNICK"))
 }
 
 func (c Connection) checkWhois(e *irc.Event) {
 	user_hostname := e.Arguments[3]
-	if user_hostname != expected_hostname {
-		anError = fmt.Errorf("%s's host is %s instead of %s", check_nick, user_hostname, expected_hostname)
+	if user_hostname != os.Getenv("EXPECTEDHOSTNAME") {
+		anError = fmt.Errorf("%s's host is %s instead of %s", os.Getenv("CHECKNICK"), user_hostname, os.Getenv("EXPECTEDHOSTNAME"))
 		c.Quit()
 		return
 	}
@@ -94,8 +95,14 @@ func (c Connection) checkStats(e *irc.Event) {
 	}
 	days, hours, minutes, seconds := nums(1), nums(2), nums(3), nums(4)
 	secsup := ((days*24+hours)*60+minutes)*60 + seconds
-	if secsup < INTERVAL*2 { // We've rebooted since the last interval, notify someone!
-		anError = fmt.Errorf("Server %s up for %d seconds", server, secsup)
+	interval, err := strconv.Atoi(os.Getenv("INTERVAL"))
+	if err != nil {
+		anError = fmt.Errorf("Error converting interval to int: %s", err)
+		c.Quit()
+		return
+	}
+	if secsup < interval { // We've rebooted since the last interval, notify someone!
+		anError = fmt.Errorf("Server %s up for %d seconds", os.Getenv("SERVER"), secsup)
 	}
 	c.Quit()
 }
@@ -106,7 +113,7 @@ func handleRequest(ctx context.Context, event events.CloudWatchEvent) error {
 	c.AddCallback(RPL_WHOISUSER, c.checkWhois)
 	c.AddCallback(RPL_STATSUPTIME, c.checkStats)
 	c.AddCallback(ERR_NOSUCHNICK, c.noNick)
-	err := c.Connect(address + ":" + port)
+	err := c.Connect(os.Getenv("ADDRESS") + ":" + os.Getenv("PORT"))
 	if err != nil {
 		return err
 	}

@@ -44,41 +44,31 @@ var _ = BeforeSuite(func() {
 })
 
 var _ = Describe("Main", func() {
-	var oldAddress string
-	var oldPort string
-	var oldCheckNick string
-	var oldExpectedHostname string
-
 	BeforeEach(func() {
-		oldAddress = address
-		oldPort = port
-		oldCheckNick = check_nick
-		oldExpectedHostname = expected_hostname
-		address = "irc.horph.com"
-	})
-	AfterEach(func() {
-		address = oldAddress
-		port = oldPort
-		check_nick = oldCheckNick
-		expected_hostname = oldExpectedHostname
+    os.Setenv("SERVER", "irc.horph.com")
+    os.Setenv("ADDRESS", "irc.horph.com")
+    os.Setenv("PORT", "6697")
+    os.Setenv("CHECKNICK", "doug")
+    os.Setenv("EXPECTEDHOSTNAME","ip-192-231-221-38.ec2.internal")
+    os.Setenv("INTERVAL", "300")
 	})
 	It("works fine", func() {
 		err := handleRequest(ctx, event)
 		Ω(err).ShouldNot(HaveOccurred())
 	})
 	It("alerts when cert is bad", func() {
-		address = "expired.badssl.com"
-		port = "443"
+    os.Setenv("ADDRESS", "expired.badssl.com")
+    os.Setenv("PORT", "443")
 		err := handleRequest(ctx, event)
 		Ω(err).Should(MatchError(MatchRegexp("^x509: certificate has expired or is not yet valid:")))
 	})
 	It("alerts when nick is not there", func() {
-		check_nick = "nobodynowhere"
+    os.Setenv("CHECKNICK", "nobodynowhere")
 		err := handleRequest(ctx, event)
 		Ω(err).Should(MatchError("Could not find nobodynowhere online"))
 	})
 	It("alerts when nick's host is wrong", func() {
-		expected_hostname = "cnn.com"
+    os.Setenv("EXPECTEDHOSTNAME","cnn.com")
 		err := handleRequest(ctx, event)
 		Ω(err).Should(MatchError("doug's host is ip-192-231-221-38.ec2.internal instead of cnn.com"))
 	})
